@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthGuard } from '@nestjs/passport';
-import { RegisterDto } from './dto/register.dto';
+import { RegisterDto } from './dtos/register.dto';
 import { LoginResponseDTO } from './dtos/login-response.dto';
 import { RegisterResponseDTO } from './dtos/register-response.dto';
 

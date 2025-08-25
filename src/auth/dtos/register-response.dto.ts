@@ -1,3 +1,3 @@
-import { AuthResponseDto } from '../dto/authResponse.dto';
+import { AuthResponseDto } from './auth-response.dto';
 
 export type RegisterResponseDTO = AuthResponseDto;
