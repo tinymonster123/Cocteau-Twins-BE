@@ -1,3 +1,6 @@
+
+import { UUID } from 'crypto';
+
 export interface AuthUser {
     id: string;
     username: string;
@@ -35,3 +38,12 @@ export interface RefreshTokenData {
         lastActiveAt: string;
     };
 }
+
+export interface AccessToken {
+    access_token: string;
+};
+
+export interface AccessTokenPayload {
+    id: UUID;
+    email: string;
+};
