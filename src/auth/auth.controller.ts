@@ -9,8 +9,10 @@ import {
 import { AuthService } from './auth.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RegisterDto } from './dtos/register.dto';
+import { RefreshTokenDto } from './dtos/refreshToken.dto';
 import { LoginResponseDTO } from './dtos/login-response.dto';
 import { RegisterResponseDTO } from './dtos/register-response.dto';
+import { RefreshTokenResponseDto } from './dtos/auth-response.dto';
 import { Public } from './decorators/public.decorator';
 
 @Public()
@@ -29,5 +31,19 @@ export class AuthController {
         @Body() registerBody: RegisterDto,
     ): Promise<RegisterResponseDTO | BadRequestException> {
         return await this.authService.register(registerBody);
+    }
+
+    @Post('refresh')
+    async refreshTokens(
+        @Body() refreshTokenDto: RefreshTokenDto,
+    ): Promise<RefreshTokenResponseDto | BadRequestException> {
+        return await this.authService.refreshTokens(refreshTokenDto);
+    }
+
+    @Post('logout')
+    async logout(
+        @Body() refreshTokenDto: RefreshTokenDto,
+    ): Promise<{ message: string }> {
+        return await this.authService.logout(refreshTokenDto.refreshToken);
     }
 }
