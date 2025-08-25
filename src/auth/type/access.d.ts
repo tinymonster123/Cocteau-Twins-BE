@@ -5,6 +5,6 @@ export interface AccessToken {
 }
 
 export interface AccessTokenPayload {
-    userId: UUID;
+    id: UUID;
     email: string;
 };
