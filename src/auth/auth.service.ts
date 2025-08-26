@@ -86,9 +86,17 @@ export class AuthService {
 
     async register(body: RegisterDto): Promise<AuthResponseDto> {
         const { username, email, password } = body;
-        const existingUser = await this.usersService.user({ email });
-        if (existingUser) {
-            throw new BadRequestException('Email already exists');
+        
+        // 检查邮箱是否已存在
+        const existingUserByEmail = await this.usersService.user({ email });
+        if (existingUserByEmail) {
+            throw new BadRequestException('邮箱已存在');
+        }
+        
+        // 检查用户名是否已存在
+        const existingUserByUsername = await this.usersService.user({ username });
+        if (existingUserByUsername) {
+            throw new BadRequestException('用户名已存在');
         }
         const hashedPassword = await bcrypt.hash(password, 10);
         const now = new Date();
