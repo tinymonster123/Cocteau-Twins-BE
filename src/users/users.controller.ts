@@ -17,12 +17,14 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtGuard } from '../auth/guards/jwt.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles, Role } from '../auth/decorators/roles.decorator';
 import { UpdateUserDto, UpdateUserStatusDto } from './dtos/update-user.dto';
 import { ApiResponse } from '../common/dto/api-response.dto';
 import { users, Prisma } from '@prisma/client';
 
 @Controller('users')
-@UseGuards(JwtGuard)
+@UseGuards(JwtGuard, RolesGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }
 
@@ -39,6 +41,7 @@ export class UsersController {
   }
 
   @Get()
+  @Roles(Role.ADMIN)
   async getUsers(
     @Query('search') search?: string,
   ): Promise<ApiResponse<{ users: Omit<users, 'password_hash'>[] }>> {
@@ -66,6 +69,7 @@ export class UsersController {
   }
 
   @Get(':id')
+  @Roles(Role.ADMIN)
   async getUserById(
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ApiResponse<Omit<users, 'password_hash'>>> {
@@ -111,6 +115,7 @@ export class UsersController {
   }
 
   @Patch(':id')
+  @Roles(Role.ADMIN)
   async updateUser(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateData: Partial<UpdateUserDto & UpdateUserStatusDto>,
@@ -152,6 +157,7 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteUser(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     const user = await this.usersService.user({ id });
