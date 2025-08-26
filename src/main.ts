@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger } from '@nestjs/common';
+import * as fs from 'fs';
 
 const bootstrap = async () => {
     const logger = new Logger();
@@ -13,8 +14,9 @@ const bootstrap = async () => {
         .setVersion('1.0')
         .addTag('cocteau twins')
         .build();
-    const documentFactory = () => SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('api', app, documentFactory);
+    const document = SwaggerModule.createDocument(app, config);
+    fs.writeFileSync("./openapi.json", JSON.stringify(document));
+    SwaggerModule.setup('api', app, document);
     app.enableCors();
     app.useGlobalPipes(new ValidationPipe());
     const port = process.env.PORT || 3000;
