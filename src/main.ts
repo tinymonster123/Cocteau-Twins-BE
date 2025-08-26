@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger } from '@nestjs/common';
+import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import * as fs from 'fs';
 
 const bootstrap = async () => {
@@ -19,6 +20,7 @@ const bootstrap = async () => {
     SwaggerModule.setup('api', app, document);
     app.enableCors();
     app.useGlobalPipes(new ValidationPipe());
+    app.useGlobalFilters(new AllExceptionsFilter());
     const port = process.env.PORT || 3000;
     await app.listen(port);
     logger.log(`Application listening on port ${port}`);
