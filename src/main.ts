@@ -7,22 +7,24 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import * as fs from 'fs';
 
 const bootstrap = async () => {
-    const logger = new Logger();
-    const app = await NestFactory.create(AppModule);
-    const config = new DocumentBuilder()
-        .setTitle('Cocteau Twins API')
-        .setDescription('The Cocteau Twins API description')
-        .setVersion('1.0')
-        .addTag('cocteau twins')
-        .build();
-    const document = SwaggerModule.createDocument(app, config);
-    fs.writeFileSync("./openapi.json", JSON.stringify(document));
-    SwaggerModule.setup('api', app, document);
-    app.enableCors();
-    app.useGlobalPipes(new ValidationPipe());
-    app.useGlobalFilters(new AllExceptionsFilter());
-    const port = process.env.PORT || 3000;
-    await app.listen(port);
-    logger.log(`Application listening on port ${port}`);
+  const logger = new Logger();
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn'],
+  });
+  const config = new DocumentBuilder()
+    .setTitle('Cocteau Twins API')
+    .setDescription('The Cocteau Twins API description')
+    .setVersion('1.0')
+    .addTag('cocteau twins')
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  fs.writeFileSync('./openapi.json', JSON.stringify(document));
+  SwaggerModule.setup('api', app, document);
+  app.enableCors();
+  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalFilters(new AllExceptionsFilter());
+  const port = process.env.PORT || 3000;
+  await app.listen(port);
+  logger.log(`Application listening on port ${port}`);
 };
 bootstrap();
