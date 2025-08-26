@@ -13,6 +13,7 @@ import { RegisterDto } from './dtos/register.dto';
 import { LoginDto } from './dtos/login.dto';
 import { RefreshTokenDto } from './dtos/refreshToken.dto';
 import { AuthResponseDto, RefreshTokenResponseDto } from './dtos/auth-response.dto';
+import { RegisterResponseDto } from './dtos/register-response.dto';
 import { Public } from './decorators/public.decorator';
 import { ApiResponse } from '../common/dto/api-response.dto';
 
@@ -31,7 +32,7 @@ export class AuthController {
     @HttpCode(HttpStatus.CREATED)
     async register(
         @Body() registerBody: RegisterDto,
-    ): Promise<AuthResponseDto> {
+    ): Promise<RegisterResponseDto> {
         return await this.authService.register(registerBody);
     }
 

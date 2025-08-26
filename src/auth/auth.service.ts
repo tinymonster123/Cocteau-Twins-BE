@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { users } from '@prisma/client';
 import { UsersService } from 'src/users/users.service';
 import { RegisterDto } from './dtos/register.dto';
 import { AuthResponseDto, RefreshTokenResponseDto } from './dtos/auth-response.dto';
+import { RegisterResponseDto } from './dtos/register-response.dto';
 import { RefreshTokenDto } from './dtos/refreshToken.dto';
 import { RefreshTokenService } from './refresh-token.service';
 import { ApiResponse } from '../common/dto/api-response.dto';
@@ -12,6 +13,8 @@ import crypto from 'crypto';
 
 @Injectable()
 export class AuthService {
+    private readonly logger = new Logger(AuthService.name);
+
     constructor(
         private usersService: UsersService,
         private jwtService: JwtService,
@@ -19,19 +22,31 @@ export class AuthService {
     ) { }
 
     async validateUser(email: string, password: string): Promise<users> {
+        this.logger.log(`用户登录验证请求: ${email}`);
+
         const user = await this.usersService.user({ email });
         if (!user) {
-            throw new BadRequestException('User not found');
+            this.logger.warn(`登录失败: 用户 ${email} 不存在`);
+            throw new BadRequestException('邮箱或密码错误');
         }
+
+        if (!user.is_active) {
+            this.logger.warn(`登录失败: 用户 ${email} 已被禁用`);
+            throw new BadRequestException('用户已被禁用');
+        }
+
         const isMatch: boolean = bcrypt.compareSync(password, user.password_hash);
         if (!isMatch) {
-            throw new BadRequestException('Password does not match');
+            this.logger.warn(`登录失败: 用户 ${email} 密码错误`);
+            throw new BadRequestException('邮箱或密码错误');
         }
+
+        this.logger.log(`用户登录验证成功: ${email} (ID: ${user.id})`);
         return user;
     }
 
     private buildAuthResponse(user: users): AuthResponseDto {
-        const payload = { id: user.id, email: user.email };
+        const payload = { id: user.id, email: user.email, role: user.role };
         const sessionId = crypto.randomUUID();
         const now = Date.now();
         const accessTtlMs = 15 * 60 * 1000;
@@ -45,6 +60,7 @@ export class AuthService {
                 id: user.id,
                 username: user.username,
                 email: user.email,
+                role: user.role,
                 isActive: user.is_active ?? true,
                 createdAt: (user.created_at ?? new Date(now)).toISOString(),
                 updatedAt: (user.updated_at ?? new Date(now)).toISOString(),
@@ -66,6 +82,8 @@ export class AuthService {
     }
 
     async login(user: users): Promise<AuthResponseDto> {
+        this.logger.log(`用户登录: ${user.email} (ID: ${user.id})`);
+
         // 更新最后登录时间
         await this.usersService.updateUser({
             where: { id: user.id },
@@ -81,23 +99,29 @@ export class AuthService {
             authResponse.data!.tokens.refreshToken,
         );
 
+        this.logger.log(`用户登录成功，生成令牌: ${user.email} (会话ID: ${authResponse.data!.session.sessionId})`);
         return authResponse;
     }
 
-    async register(body: RegisterDto): Promise<AuthResponseDto> {
+    async register(body: RegisterDto): Promise<RegisterResponseDto> {
         const { username, email, password } = body;
-        
+
+        this.logger.log(`用户注册请求: ${email}`);
+
         // 检查邮箱是否已存在
         const existingUserByEmail = await this.usersService.user({ email });
         if (existingUserByEmail) {
+            this.logger.warn(`注册失败: 邮箱 ${email} 已存在`);
             throw new BadRequestException('邮箱已存在');
         }
-        
+
         // 检查用户名是否已存在
         const existingUserByUsername = await this.usersService.user({ username });
         if (existingUserByUsername) {
+            this.logger.warn(`注册失败: 用户名 ${username} 已存在`);
             throw new BadRequestException('用户名已存在');
         }
+
         const hashedPassword = await bcrypt.hash(password, 10);
         const now = new Date();
         const created = await this.usersService.createUser({
@@ -105,31 +129,37 @@ export class AuthService {
             username,
             email,
             password_hash: hashedPassword,
+            role: 'user', // 默认角色为普通用户
             is_active: true,
             created_at: now,
             updated_at: now,
         });
 
-        const authResponse = await this.buildAuthResponse(created);
+        this.logger.log(`用户注册成功: ${created.email} (ID: ${created.id})`);
 
-        // 存储 refresh token
-        await this.refreshTokenService.createRefreshToken(
-            created.id,
-            authResponse.data!.session.sessionId,
-            authResponse.data!.tokens.refreshToken,
-        );
+        const registerData = {
+            id: created.id,
+            username: created.username,
+            email: created.email,
+            role: created.role,
+            isActive: created.is_active ?? true,
+            createdAt: created.created_at?.toISOString() ?? now.toISOString(),
+        };
 
-        return authResponse;
+        return ApiResponse.success('注册成功，请登录', registerData);
     }
 
     async refreshTokens(refreshTokenDto: RefreshTokenDto): Promise<RefreshTokenResponseDto> {
         const { refreshToken } = refreshTokenDto;
+
+        this.logger.log('令牌刷新请求');
 
         try {
             // 验证 JWT refresh token
             const decoded = this.jwtService.verify(refreshToken);
 
             if (decoded.type !== 'refresh') {
+                this.logger.warn('令牌刷新失败: 无效的 token 类型');
                 throw new UnauthorizedException('无效的 token 类型');
             }
 
@@ -137,17 +167,19 @@ export class AuthService {
             const { userId, sessionId } = await this.refreshTokenService.validateRefreshToken(refreshToken);
 
             if (userId !== decoded.id) {
+                this.logger.warn(`令牌刷新失败: Token 用户不匹配 (JWT用户: ${decoded.id}, DB用户: ${userId})`);
                 throw new UnauthorizedException('Token 用户不匹配');
             }
 
             // 获取用户信息
             const user = await this.usersService.user({ id: userId });
             if (!user || !user.is_active) {
+                this.logger.warn(`令牌刷新失败: 用户不存在或已禁用 (用户ID: ${userId})`);
                 throw new UnauthorizedException('用户不存在或已禁用');
             }
 
             // 生成新的 tokens
-            const payload = { id: user.id, email: user.email };
+            const payload = { id: user.id, email: user.email, role: user.role };
             const newSessionId = crypto.randomUUID();
             const now = Date.now();
             const accessTtlMs = 15 * 60 * 1000; // 15m
@@ -183,11 +215,13 @@ export class AuthService {
                 },
             };
 
+            this.logger.log(`令牌刷新成功: ${user.email} (新会话ID: ${newSessionId})`);
             return ApiResponse.success('Token 刷新成功', refreshData);
         } catch (error) {
             if (error instanceof UnauthorizedException) {
                 throw error;
             }
+            this.logger.error('令牌刷新失败: 未知错误', error);
             throw new UnauthorizedException('无效的 refresh token');
         }
     }
@@ -203,8 +237,15 @@ export class AuthService {
     }
 
     async logoutUser(userId: string): Promise<void> {
-        // 撤销该用户的所有 refresh tokens
-        await this.refreshTokenService.revokeAllUserTokens(userId);
+        this.logger.log(`用户登出: ${userId}`);
+        try {
+            // 撤销该用户的所有 refresh tokens
+            await this.refreshTokenService.revokeAllUserTokens(userId);
+            this.logger.log(`用户登出成功: ${userId}`);
+        } catch (error) {
+            this.logger.error(`用户登出失败: ${userId}`, error);
+            throw error;
+        }
     }
 
 

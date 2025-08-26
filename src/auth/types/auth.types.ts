@@ -5,6 +5,7 @@ export interface AuthUser {
     id: string;
     username: string;
     email: string;
+    role: string;
     isActive: boolean;
     createdAt: string;
     updatedAt: string;
@@ -46,4 +47,5 @@ export interface AccessToken {
 export interface AccessTokenPayload {
     id: UUID;
     email: string;
+    role: string;
 };
