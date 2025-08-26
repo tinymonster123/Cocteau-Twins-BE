@@ -202,5 +202,10 @@ export class AuthService {
         }
     }
 
+    async logoutUser(userId: string): Promise<void> {
+        // 撤销该用户的所有 refresh tokens
+        await this.refreshTokenService.revokeAllUserTokens(userId);
+    }
+
 
 }

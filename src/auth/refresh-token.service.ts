@@ -74,5 +74,12 @@ export class RefreshTokenService {
         });
     }
 
+    async revokeAllUserTokens(userId: string): Promise<void> {
+        await this.prisma.refresh_tokens.updateMany({
+            where: { user_id: userId },
+            data: { is_revoked: true },
+        });
+    }
+
 
 }
