@@ -9,7 +9,7 @@ import * as fs from 'fs';
 const bootstrap = async () => {
   const logger = new Logger();
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn'],
+    logger: ['log', 'error', 'warn', 'debug', 'verbose'],
   });
   const config = new DocumentBuilder()
     .setTitle('Cocteau Twins API')
