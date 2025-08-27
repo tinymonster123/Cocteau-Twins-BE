@@ -26,6 +26,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
+  @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto): Promise<AuthResponseDto> {
     const user = await this.authService.validateUser(
       loginDto.email,
@@ -45,6 +46,7 @@ export class AuthController {
 
   @Public()
   @Post('refresh')
+  @HttpCode(HttpStatus.OK)
   async refreshTokens(
     @Body() refreshTokenDto: RefreshTokenDto,
   ): Promise<RefreshTokenResponseDto> {
@@ -53,6 +55,7 @@ export class AuthController {
 
   @UseGuards(JwtGuard)
   @Post('logout')
+  @HttpCode(HttpStatus.OK)
   async logout(@Request() req: any): Promise<ApiResponse<{ message: string }>> {
     await this.authService.logoutUser(req.user.id);
     return ApiResponse.success('登出成功', { message: '登出成功' });
