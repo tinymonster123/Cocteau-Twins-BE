@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, UnauthorizedException, Logger } from '
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { users } from '@prisma/client';
-import { UsersService } from 'src/users/users.service';
+import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dtos/register.dto';
 import { AuthResponseDto, RefreshTokenResponseDto } from './dtos/auth-response.dto';
 import { RegisterResponseDto } from './dtos/register-response.dto';
