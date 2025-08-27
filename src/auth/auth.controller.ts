@@ -58,7 +58,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@User() user: AccessTokenPayload): Promise<ApiResponse<{ message: string }>> {
-    await this.authService.logoutUser(user.id);
+    await this.authService.logoutUser(user);
     return ApiResponse.success('登出成功', { message: '登出成功' });
   }
 }

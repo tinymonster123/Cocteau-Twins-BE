@@ -6,12 +6,14 @@ import { UsersModule } from './users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { JwtGuard } from './auth/guards/jwt.guard';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
     imports: [
         ConfigModule.forRoot({
             isGlobal: true,
         }),
+        RedisModule,
         AuthModule,
         UsersModule,
         PrismaModule

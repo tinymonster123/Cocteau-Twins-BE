@@ -48,4 +48,7 @@ export interface AccessTokenPayload {
     id: UUID;
     email: string;
     role: string;
+    iat: number;
+    exp: number;
+    jti: string;
 };

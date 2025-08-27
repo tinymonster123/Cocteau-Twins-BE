@@ -11,6 +11,8 @@ import { RefreshTokenDto } from './dtos/refreshToken.dto';
 import { RefreshTokenService } from './refresh-token.service';
 import { ApiResponse } from '../common/dto/api-response.dto';
 import crypto from 'crypto';
+import { RedisService } from '../redis/redis.service';
+import { AccessTokenPayload } from './type/auth.types';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +23,7 @@ export class AuthService {
         private jwtService: JwtService,
         private refreshTokenService: RefreshTokenService,
         private configService: ConfigService,
+        private redisService: RedisService,
     ) { }
 
     private safeToISOString(date: Date | null | undefined): string | undefined {
@@ -95,7 +98,10 @@ export class AuthService {
 
         const accessToken = this.jwtService.sign(
             payload,
-            { expiresIn: this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRATION', '1d') }
+            {
+                expiresIn: this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRATION', '1d'),
+                jwtid: crypto.randomUUID(),
+            }
         );
         const refreshToken = this.jwtService.sign(
             { ...payload, sid: sessionId, type: 'refresh' },
@@ -240,7 +246,10 @@ export class AuthService {
             const refreshTtlMs = this.configService.get<number>('JWT_REFRESH_TOKEN_TTL_MS', 604800000);
             const newAccessToken = this.jwtService.sign(
                 payload,
-                { expiresIn: this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRATION', '1d') }
+                {
+                    expiresIn: this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRATION', '1d'),
+                    jwtid: crypto.randomUUID(),
+                }
             );
             const newRefreshToken = this.jwtService.sign(
                 { ...payload, sid: newSessionId, type: 'refresh' },
@@ -283,14 +292,22 @@ export class AuthService {
         }
     }
 
-    async logoutUser(userId: string): Promise<void> {
-        this.logger.log(`用户登出: ${userId}`);
+    async logoutUser(payload: AccessTokenPayload): Promise<void> {
+        this.logger.log(`用户登出请求: ${payload.id}`);
         try {
-            // 撤销该用户的所有 refresh tokens
-            await this.refreshTokenService.revokeAllUserTokens(userId);
-            this.logger.log(`用户登出成功: ${userId}`);
+            const { jti, exp, id } = payload;
+            const remainingTime = Math.ceil(exp - (Date.now() / 1000));
+
+            if (remainingTime > 0) {
+                await this.redisService.addToBlacklist(jti, remainingTime);
+                this.logger.log(`已将用户 ${id} 的访问令牌加入黑名单（jti: ${jti}）`);
+            }
+
+            await this.refreshTokenService.revokeAllUserTokens(id as string);
+            this.logger.log(`已撤销用户 ${id} 的所有刷新令牌`);
+            this.logger.log(`用户登出成功: ${id}`);
         } catch (error) {
-            this.logger.error(`用户登出失败: ${userId}`, error);
+            this.logger.error(`用户登出失败: ${payload.id}`, error);
             throw error;
         }
     }
