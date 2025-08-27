@@ -8,7 +8,6 @@ import {
   Param,
   Query,
   UseGuards,
-  Request,
   BadRequestException,
   NotFoundException,
   ParseUUIDPipe,
@@ -22,6 +21,8 @@ import { Roles, Role } from '../auth/decorators/roles.decorator';
 import { UpdateUserDto, UpdateUserStatusDto } from './dtos/update-user.dto';
 import { ApiResponse } from '../common/dto/api-response.dto';
 import { users, Prisma } from '@prisma/client';
+import { User } from '../auth/decorators/user.decorator';
+import type { AccessTokenPayload } from '../auth/type/auth.types';
 
 @Controller('users')
 @UseGuards(JwtGuard, RolesGuard)
@@ -30,14 +31,14 @@ export class UsersController {
 
   @Get('me')
   async getCurrentUser(
-    @Request() req: any,
+    @User() user: AccessTokenPayload,
   ): Promise<ApiResponse<Omit<users, 'password_hash'>>> {
-    const user = await this.usersService.user({ id: req.user.id });
-    if (!user) {
+    const userProfile = await this.usersService.user({ id: user.id });
+    if (!userProfile) {
       throw new NotFoundException('用户不存在');
     }
-    const { password_hash, ...userProfile } = user;
-    return ApiResponse.success('获取用户信息成功', userProfile);
+    const { password_hash, ...result } = userProfile;
+    return ApiResponse.success('获取用户信息成功', result);
   }
 
   @Get()
@@ -83,27 +84,27 @@ export class UsersController {
 
   @Put('me')
   async updateCurrentUser(
-    @Request() req: any,
+    @User() user: AccessTokenPayload,
     @Body() updateData: UpdateUserDto,
   ): Promise<ApiResponse<Omit<users, 'password_hash'>>> {
     const { username, email } = updateData;
 
     if (email) {
       const existingUser = await this.usersService.user({ email });
-      if (existingUser && existingUser.id !== req.user.id) {
+      if (existingUser && existingUser.id !== user.id) {
         throw new BadRequestException('邮箱已被使用');
       }
     }
 
     if (username) {
       const existingUser = await this.usersService.user({ username });
-      if (existingUser && existingUser.id !== req.user.id) {
+      if (existingUser && existingUser.id !== user.id) {
         throw new BadRequestException('用户名已被使用');
       }
     }
 
     const updatedUser = await this.usersService.updateUser({
-      where: { id: req.user.id },
+      where: { id: user.id },
       data: {
         ...updateData,
         updated_at: new Date(),
@@ -158,13 +159,15 @@ export class UsersController {
 
   @Delete(':id')
   @Roles(Role.ADMIN)
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteUser(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+  async deleteUser(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiResponse<{ message: string }>> {
     const user = await this.usersService.user({ id });
     if (!user) {
       throw new NotFoundException('用户不存在');
     }
 
     await this.usersService.deleteUser({ id });
+    return ApiResponse.success('用户删除成功', { message: '用户删除成功' });
   }
 }
