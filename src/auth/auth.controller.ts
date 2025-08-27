@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Post,
-  Request,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -19,10 +18,12 @@ import {
 import { RegisterResponseDto } from './dtos/register-response.dto';
 import { Public } from './decorators/public.decorator';
 import { ApiResponse } from '../common/dto/api-response.dto';
+import { User } from './decorators/user.decorator';
+import type { AccessTokenPayload } from './type/auth.types';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService) { }
 
   @Public()
   @Post('login')
@@ -56,8 +57,8 @@ export class AuthController {
   @UseGuards(JwtGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(@Request() req: any): Promise<ApiResponse<{ message: string }>> {
-    await this.authService.logoutUser(req.user.id);
+  async logout(@User() user: AccessTokenPayload): Promise<ApiResponse<{ message: string }>> {
+    await this.authService.logoutUser(user.id);
     return ApiResponse.success('登出成功', { message: '登出成功' });
   }
 }
