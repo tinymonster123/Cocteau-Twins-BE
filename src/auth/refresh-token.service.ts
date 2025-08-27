@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { refresh_tokens } from '@prisma/client';
 import * as crypto from 'crypto';
@@ -9,6 +10,7 @@ export class RefreshTokenService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly jwtService: JwtService,
+        private readonly configService: ConfigService,
     ) { }
 
     async createRefreshToken(
@@ -17,7 +19,18 @@ export class RefreshTokenService {
         refreshToken: string,
     ): Promise<refresh_tokens> {
         const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+        let expiresAt: Date;
+        const decoded: unknown = this.jwtService.decode(refreshToken);
+        if (decoded && typeof decoded === 'object' && 'exp' in decoded && typeof (decoded as any).exp === 'number') {
+            const exp = (decoded as { exp: number }).exp;
+            const ts = exp * 1000;
+            const d = new Date(ts);
+            expiresAt = isNaN(d.getTime()) ? new Date(Date.now() + this.configService.get<number>('JWT_REFRESH_TOKEN_TTL_MS', 604800000)) : d;
+        } else {
+            const ttlMs = this.configService.get<number>('JWT_REFRESH_TOKEN_TTL_MS', 604800000);
+            expiresAt = new Date(Date.now() + ttlMs);
+        }
 
         // 删除用户的旧 refresh token（可选：保留多个会话）
         await this.prisma.refresh_tokens.deleteMany({

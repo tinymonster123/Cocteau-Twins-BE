@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { users } from '@prisma/client';
@@ -19,7 +20,46 @@ export class AuthService {
         private usersService: UsersService,
         private jwtService: JwtService,
         private refreshTokenService: RefreshTokenService,
+        private configService: ConfigService,
     ) { }
+
+    private safeToISOString(date: Date | null | undefined): string | undefined {
+        if (date && date instanceof Date && !isNaN(date.getTime())) {
+            return date.toISOString();
+        }
+        return undefined;
+    }
+
+    private safeDateFromTimestamp(timestamp: number): Date {
+        const maxTimestamp = this.configService.get<number>('MAX_TIMESTAMP', 8640000000000000);
+        const minTimestamp = this.configService.get<number>('MIN_TIMESTAMP', -8640000000000000);
+        const now = Date.now();
+
+        if (timestamp > maxTimestamp || timestamp < minTimestamp || timestamp <= now) {
+            const reasonText = timestamp <= now ? '早于或等于当前时间' : '超出允许范围';
+            const fallbackTtl = this.configService.get<number>('DEFAULT_FALLBACK_TTL_MS', 3600000);
+            this.logger.warn(
+                `时间戳 ${timestamp} ${reasonText}，将回退为从当前时间起 ${fallbackTtl}ms 的默认过期时间。`
+            );
+            return new Date(now + fallbackTtl);
+        }
+
+        return new Date(timestamp);
+    }
+
+    private getTokenExpiresAtIso(token: string): string | undefined {
+        const decoded: unknown = this.jwtService.decode(token);
+        if (decoded && typeof decoded === 'object' && 'exp' in decoded) {
+            const exp = (decoded as { exp?: number }).exp;
+            if (typeof exp === 'number' && Number.isFinite(exp)) {
+                const expiresAt = new Date(exp * 1000);
+                if (!isNaN(expiresAt.getTime())) {
+                    return expiresAt.toISOString();
+                }
+            }
+        }
+        return undefined;
+    }
 
     async validateUser(email: string, password: string): Promise<users> {
         this.logger.log(`用户登录验证请求: ${email}`);
@@ -49,11 +89,24 @@ export class AuthService {
         const payload = { id: user.id, email: user.email, role: user.role };
         const sessionId = crypto.randomUUID();
         const now = Date.now();
-        const accessTtlMs = 15 * 60 * 1000;
-        const refreshTtlMs = 7 * 24 * 60 * 60 * 1000;
 
-        const accessToken = this.jwtService.sign(payload);
-        const refreshToken = this.jwtService.sign({ ...payload, sid: sessionId, type: 'refresh' });
+        const accessTtlMs = this.configService.get<number>('JWT_ACCESS_TOKEN_TTL_MS', 86400000);
+        const refreshTtlMs = this.configService.get<number>('JWT_REFRESH_TOKEN_TTL_MS', 604800000);
+
+        const accessToken = this.jwtService.sign(
+            payload,
+            { expiresIn: this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRATION', '1d') }
+        );
+        const refreshToken = this.jwtService.sign(
+            { ...payload, sid: sessionId, type: 'refresh' },
+            { expiresIn: this.configService.get<string>('JWT_REFRESH_TOKEN_EXPIRATION', '7d') }
+        );
+
+        // 优先使用 JWT exp，失败则回退到安全的 TTL 计算
+        const accessTokenExpiresAtIso = this.getTokenExpiresAtIso(accessToken)
+            ?? this.safeDateFromTimestamp(now + accessTtlMs).toISOString();
+        const refreshTokenExpiresAtIso = this.getTokenExpiresAtIso(refreshToken)
+            ?? this.safeDateFromTimestamp(now + refreshTtlMs).toISOString();
 
         const authData = {
             user: {
@@ -62,19 +115,19 @@ export class AuthService {
                 email: user.email,
                 role: user.role,
                 isActive: user.is_active ?? true,
-                createdAt: (user.created_at ?? new Date(now)).toISOString(),
-                updatedAt: (user.updated_at ?? new Date(now)).toISOString(),
-                lastLogin: user.last_login ? user.last_login.toISOString() : undefined,
+                createdAt: this.safeToISOString(user.created_at) ?? new Date(now).toISOString(),
+                updatedAt: this.safeToISOString(user.updated_at) ?? new Date(now).toISOString(),
+                lastLogin: this.safeToISOString(user.last_login),
             },
             tokens: {
                 accessToken,
                 refreshToken,
-                accessTokenExpiresAt: new Date(now + accessTtlMs).toISOString(),
-                refreshTokenExpiresAt: new Date(now + refreshTtlMs).toISOString(),
+                accessTokenExpiresAt: accessTokenExpiresAtIso,
+                refreshTokenExpiresAt: refreshTokenExpiresAtIso,
             },
             session: {
                 sessionId,
-                expiresAt: new Date(now + refreshTtlMs).toISOString(),
+                expiresAt: refreshTokenExpiresAtIso,
             },
         };
 
@@ -143,7 +196,7 @@ export class AuthService {
             email: created.email,
             role: created.role,
             isActive: created.is_active ?? true,
-            createdAt: created.created_at?.toISOString() ?? now.toISOString(),
+            createdAt: this.safeToISOString(created.created_at) ?? new Date(now).toISOString(),
         };
 
         return ApiResponse.success('注册成功，请登录', registerData);
@@ -164,7 +217,7 @@ export class AuthService {
             }
 
             // 验证数据库中的 refresh token
-            const { userId, sessionId } = await this.refreshTokenService.validateRefreshToken(refreshToken);
+            const { userId } = await this.refreshTokenService.validateRefreshToken(refreshToken);
 
             if (userId !== decoded.id) {
                 this.logger.warn(`令牌刷新失败: Token 用户不匹配 (JWT用户: ${decoded.id}, DB用户: ${userId})`);
@@ -182,15 +235,17 @@ export class AuthService {
             const payload = { id: user.id, email: user.email, role: user.role };
             const newSessionId = crypto.randomUUID();
             const now = Date.now();
-            const accessTtlMs = 15 * 60 * 1000; // 15m
-            const refreshTtlMs = 7 * 24 * 60 * 60 * 1000; // 7d
 
-            const newAccessToken = this.jwtService.sign(payload);
-            const newRefreshToken = this.jwtService.sign({
-                ...payload,
-                sid: newSessionId,
-                type: 'refresh'
-            });
+            const accessTtlMs = this.configService.get<number>('JWT_ACCESS_TOKEN_TTL_MS', 86400000);
+            const refreshTtlMs = this.configService.get<number>('JWT_REFRESH_TOKEN_TTL_MS', 604800000);
+            const newAccessToken = this.jwtService.sign(
+                payload,
+                { expiresIn: this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRATION', '1d') }
+            );
+            const newRefreshToken = this.jwtService.sign(
+                { ...payload, sid: newSessionId, type: 'refresh' },
+                { expiresIn: this.configService.get<string>('JWT_REFRESH_TOKEN_EXPIRATION', '7d') }
+            );
 
             // 撤销旧的 refresh token 并创建新的
             await this.refreshTokenService.revokeRefreshToken(refreshToken);
@@ -204,8 +259,10 @@ export class AuthService {
                 tokens: {
                     accessToken: newAccessToken,
                     refreshToken: newRefreshToken,
-                    accessTokenExpiresAt: new Date(now + accessTtlMs).toISOString(),
-                    refreshTokenExpiresAt: new Date(now + refreshTtlMs).toISOString(),
+                    accessTokenExpiresAt: this.getTokenExpiresAtIso(newAccessToken)
+                        ?? this.safeDateFromTimestamp(now + accessTtlMs).toISOString(),
+                    refreshTokenExpiresAt: this.getTokenExpiresAtIso(newRefreshToken)
+                        ?? this.safeDateFromTimestamp(now + refreshTtlMs).toISOString(),
                 },
                 user: {
                     id: user.id,
@@ -226,16 +283,6 @@ export class AuthService {
         }
     }
 
-    async logout(refreshToken: string): Promise<{ message: string }> {
-        try {
-            await this.refreshTokenService.revokeRefreshToken(refreshToken);
-            return { message: '登出成功' };
-        } catch (error) {
-            // 即使 token 无效也算登出成功
-            return { message: '登出成功' };
-        }
-    }
-
     async logoutUser(userId: string): Promise<void> {
         this.logger.log(`用户登出: ${userId}`);
         try {
@@ -247,6 +294,4 @@ export class AuthService {
             throw error;
         }
     }
-
-
 }
