@@ -90,7 +90,6 @@ export class AuthService {
 
     private buildAuthResponse(user: users): AuthResponseDto {
         const payload = { id: user.id, email: user.email, role: user.role };
-        const sessionId = crypto.randomUUID();
         const now = Date.now();
 
         const accessTtlMs = this.configService.get<number>('JWT_ACCESS_TOKEN_TTL_MS', 86400000);
@@ -104,11 +103,10 @@ export class AuthService {
             }
         );
         const refreshToken = this.jwtService.sign(
-            { ...payload, sid: sessionId, type: 'refresh' },
+            { ...payload, type: 'refresh' },
             { expiresIn: this.configService.get<string>('JWT_REFRESH_TOKEN_EXPIRATION', '7d') }
         );
 
-        // 优先使用 JWT exp，失败则回退到安全的 TTL 计算
         const accessTokenExpiresAtIso = this.getTokenExpiresAtIso(accessToken)
             ?? this.safeDateFromTimestamp(now + accessTtlMs).toISOString();
         const refreshTokenExpiresAtIso = this.getTokenExpiresAtIso(refreshToken)
@@ -131,10 +129,6 @@ export class AuthService {
                 accessTokenExpiresAt: accessTokenExpiresAtIso,
                 refreshTokenExpiresAt: refreshTokenExpiresAtIso,
             },
-            session: {
-                sessionId,
-                expiresAt: refreshTokenExpiresAtIso,
-            },
         };
 
         return ApiResponse.success('OK', authData);
@@ -143,7 +137,6 @@ export class AuthService {
     async login(user: users): Promise<AuthResponseDto> {
         this.logger.log(`用户登录: ${user.email} (ID: ${user.id})`);
 
-        // 更新最后登录时间
         await this.usersService.updateUser({
             where: { id: user.id },
             data: { last_login: new Date() },
@@ -151,14 +144,12 @@ export class AuthService {
 
         const authResponse = await this.buildAuthResponse(user);
 
-        // 存储 refresh token
         await this.refreshTokenService.createRefreshToken(
             user.id,
-            authResponse.data!.session.sessionId,
             authResponse.data!.tokens.refreshToken,
         );
 
-        this.logger.log(`用户登录成功，生成令牌: ${user.email} (会话ID: ${authResponse.data!.session.sessionId})`);
+        this.logger.log(`用户登录成功，生成令牌: ${user.email}`);
         return authResponse;
     }
 
@@ -167,14 +158,12 @@ export class AuthService {
 
         this.logger.log(`用户注册请求: ${email}`);
 
-        // 检查邮箱是否已存在
         const existingUserByEmail = await this.usersService.user({ email });
         if (existingUserByEmail) {
             this.logger.warn(`注册失败: 邮箱 ${email} 已存在`);
             throw new BadRequestException('邮箱已存在');
         }
 
-        // 检查用户名是否已存在
         const existingUserByUsername = await this.usersService.user({ username });
         if (existingUserByUsername) {
             this.logger.warn(`注册失败: 用户名 ${username} 已存在`);
@@ -188,7 +177,7 @@ export class AuthService {
             username,
             email,
             password_hash: hashedPassword,
-            role: 'user', // 默认角色为普通用户
+            role: 'user',
             is_active: true,
             created_at: now,
             updated_at: now,
@@ -214,7 +203,6 @@ export class AuthService {
         this.logger.log('令牌刷新请求');
 
         try {
-            // 验证 JWT refresh token
             const decoded = this.jwtService.verify(refreshToken);
 
             if (decoded.type !== 'refresh') {
@@ -222,7 +210,6 @@ export class AuthService {
                 throw new UnauthorizedException('无效的 token 类型');
             }
 
-            // 验证数据库中的 refresh token
             const { userId } = await this.refreshTokenService.validateRefreshToken(refreshToken);
 
             if (userId !== decoded.id) {
@@ -230,16 +217,13 @@ export class AuthService {
                 throw new UnauthorizedException('Token 用户不匹配');
             }
 
-            // 获取用户信息
             const user = await this.usersService.user({ id: userId });
             if (!user || !user.is_active) {
                 this.logger.warn(`令牌刷新失败: 用户不存在或已禁用 (用户ID: ${userId})`);
                 throw new UnauthorizedException('用户不存在或已禁用');
             }
 
-            // 生成新的 tokens
             const payload = { id: user.id, email: user.email, role: user.role };
-            const newSessionId = crypto.randomUUID();
             const now = Date.now();
 
             const accessTtlMs = this.configService.get<number>('JWT_ACCESS_TOKEN_TTL_MS', 86400000);
@@ -252,15 +236,13 @@ export class AuthService {
                 }
             );
             const newRefreshToken = this.jwtService.sign(
-                { ...payload, sid: newSessionId, type: 'refresh' },
+                { ...payload, type: 'refresh' },
                 { expiresIn: this.configService.get<string>('JWT_REFRESH_TOKEN_EXPIRATION', '7d') }
             );
 
-            // 撤销旧的 refresh token 并创建新的
             await this.refreshTokenService.revokeRefreshToken(refreshToken);
             await this.refreshTokenService.createRefreshToken(
                 user.id,
-                newSessionId,
                 newRefreshToken,
             );
 
@@ -281,7 +263,7 @@ export class AuthService {
                 },
             };
 
-            this.logger.log(`令牌刷新成功: ${user.email} (新会话ID: ${newSessionId})`);
+            this.logger.log(`令牌刷新成功: ${user.email}`);
             return ApiResponse.success('Token 刷新成功', refreshData);
         } catch (error) {
             if (error instanceof UnauthorizedException) {

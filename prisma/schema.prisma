@@ -12,14 +12,12 @@ model refresh_tokens {
   id         String    @id @db.Uuid
   user_id    String    @db.Uuid
   token_hash String    @unique @db.VarChar(255)
-  session_id String    @db.Uuid
   expires_at DateTime  @db.Timestamp(6)
   created_at DateTime? @default(now()) @db.Timestamp(6)
   is_revoked Boolean?  @default(false)
   users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([expires_at])
-  @@index([session_id])
   @@index([token_hash])
   @@index([user_id])
 }

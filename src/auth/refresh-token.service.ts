@@ -15,7 +15,6 @@ export class RefreshTokenService {
 
     async createRefreshToken(
         userId: string,
-        sessionId: string,
         refreshToken: string,
     ): Promise<refresh_tokens> {
         const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
@@ -42,14 +41,13 @@ export class RefreshTokenService {
                 id: crypto.randomUUID(),
                 user_id: userId,
                 token_hash: tokenHash,
-                session_id: sessionId,
                 expires_at: expiresAt,
                 is_revoked: false,
             },
         });
     }
 
-    async validateRefreshToken(refreshToken: string): Promise<{ userId: string; sessionId: string }> {
+    async validateRefreshToken(refreshToken: string): Promise<{ userId: string }> {
         const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
 
         const storedToken = await this.prisma.refresh_tokens.findUnique({
@@ -74,7 +72,6 @@ export class RefreshTokenService {
 
         return {
             userId: storedToken.user_id,
-            sessionId: storedToken.session_id,
         };
     }
 

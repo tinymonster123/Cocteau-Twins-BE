@@ -19,15 +19,9 @@ export interface AuthTokens {
     refreshTokenExpiresAt: string;
 }
 
-export interface AuthSession {
-    sessionId: string;
-    expiresAt: string;
-}
-
 export interface AuthData {
     user: AuthUser;
     tokens: AuthTokens;
-    session: AuthSession;
 }
 
 export interface RefreshTokenData {
