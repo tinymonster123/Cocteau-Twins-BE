@@ -65,26 +65,23 @@ export class AuthService {
     }
 
     async validateUser(email: string, password: string): Promise<users> {
-        this.logger.log(`用户登录验证请求: ${email}`);
+        const normalizedEmail = email.trim().toLowerCase();
 
-        const user = await this.usersService.user({ email });
+        const user = await this.usersService.user({ email: normalizedEmail });
         if (!user) {
-            this.logger.warn(`登录失败: 用户 ${email} 不存在`);
             throw new BadRequestException('邮箱或密码错误');
         }
 
         if (!user.is_active) {
-            this.logger.warn(`登录失败: 用户 ${email} 已被禁用`);
             throw new BadRequestException('用户已被禁用');
         }
 
-        const isMatch: boolean = bcrypt.compareSync(password, user.password_hash);
+        const isMatch = await bcrypt.compare(password, user.password_hash);
         if (!isMatch) {
-            this.logger.warn(`登录失败: 用户 ${email} 密码错误`);
             throw new BadRequestException('邮箱或密码错误');
         }
 
-        this.logger.log(`用户登录验证成功: ${email} (ID: ${user.id})`);
+        this.logger.log(`用户登录验证成功: ${normalizedEmail} (ID: ${user.id})`);
         return user;
     }
 
