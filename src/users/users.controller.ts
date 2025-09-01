@@ -21,7 +21,7 @@ import { Roles, Role } from '../auth/decorators/roles.decorator';
 import { UpdateUserDto, UpdateUserStatusDto } from './dtos/update-user.dto';
 import { ApiResponse } from '../common/dto/api-response.dto';
 import { users, Prisma } from '@prisma/client';
-import { User } from '../auth/decorators/user.decorator';
+import { User } from './decorators/user.decorator';
 import type { AccessTokenPayload } from '../auth/type/auth.types';
 
 @Controller('users')

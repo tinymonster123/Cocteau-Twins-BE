@@ -18,7 +18,7 @@ import {
 import { RegisterResponseDto } from './dtos/register-response.dto';
 import { Public } from './decorators/public.decorator';
 import { ApiResponse } from '../common/dto/api-response.dto';
-import { User } from './decorators/user.decorator';
+import { User } from '../users/decorators/user.decorator';
 import type { AccessTokenPayload } from './type/auth.types';
 
 @Controller('auth')
