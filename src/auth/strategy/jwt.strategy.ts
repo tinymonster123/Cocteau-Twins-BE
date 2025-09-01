@@ -13,20 +13,28 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         private readonly redisService: RedisService,
         private readonly usersService: UsersService,
     ) {
+        const secret = configService.get<string>('JWT_SECRET');
+        if (!secret) {
+            throw new Error('未配置 JWT_SECRET');
+        }
         super({
             jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
             ignoreExpiration: false,
-            secretOrKey: configService.get('JWT_SECRET'),
+            secretOrKey: secret,
         });
     }
 
-    async validate(payload: AccessTokenPayload) {
+    async validate(payload: AccessTokenPayload): Promise<AccessTokenPayload> {
+        if ((payload as any)?.type === 'refresh') {
+            throw new UnauthorizedException('不允许使用刷新令牌访问受保护资源');
+        }
+
         if (!payload.jti) {
-            throw new UnauthorizedException('Token is missing JWT ID (jti)');
+            throw new UnauthorizedException('令牌缺少 JWT ID (jti)');
         }
         const isBlacklisted = await this.redisService.isBlacklisted(payload.jti);
         if (isBlacklisted) {
-            throw new UnauthorizedException('Token has been revoked');
+            throw new UnauthorizedException('令牌已被撤销');
         }
 
         const user = await this.usersService.user({ id: payload.id as string });
