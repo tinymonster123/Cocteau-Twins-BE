@@ -57,19 +57,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     }
 
-    // 构建统一的错误响应格式
+    const requestId = request.get('x-request-id') ?? this.generateRequestId();
     const errorResponse = ApiResponse.error(message, {
-      errorCode,
-      statusCode: status,
-      timestamp: new Date().toISOString(),
-      path: request.url,
-      method: request.method,
-      requestId: this.generateRequestId(),
+      code: errorCode,
+      details: {
+        statusCode: status,
+        timestamp: new Date().toISOString(),
+        path: request.url,
+        method: request.method,
+        requestId,
+      },
     });
+    response.setHeader('X-Request-Id', requestId);
 
     // 记录不同级别的日志
     const logMessage = `${request.method} ${request.url} - ${status} - ${message}`;
-    const clientIp = request.ip || request.connection.remoteAddress;
+    const clientIp = request.ip || request.socket.remoteAddress;
     const userAgent = request.get('User-Agent') || 'Unknown';
 
     if (status >= 500) {
@@ -98,6 +101,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private generateRequestId(): string {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `req_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   }
 }
