@@ -35,7 +35,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
       } else if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
         const responseObj = exceptionResponse as any;
         message = responseObj.message || responseObj.error || exception.message;
-        // 如果是验证错误，处理数组形式的错误消息
         if (Array.isArray(responseObj.message)) {
           message = responseObj.message.join('; ');
         }
