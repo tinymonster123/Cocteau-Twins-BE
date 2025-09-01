@@ -23,10 +23,6 @@ import { RedisModule } from './redis/redis.module';
             provide: APP_GUARD,
             useClass: JwtGuard,
         },
-        {
-            provide: APP_FILTER,
-            useClass: AllExceptionsFilter,
-        },
     ],
 })
 export class AppModule { }
