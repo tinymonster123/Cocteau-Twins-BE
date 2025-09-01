@@ -21,7 +21,7 @@ const bootstrap = async () => {
   fs.writeFileSync('./openapi.json', JSON.stringify(document));
   SwaggerModule.setup('api', app, document);
   app.enableCors();
-  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
   app.useGlobalFilters(new AllExceptionsFilter());
   const port = process.env.PORT || 3000;
   await app.listen(port);
