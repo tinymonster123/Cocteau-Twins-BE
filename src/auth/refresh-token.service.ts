@@ -21,30 +21,35 @@ export class RefreshTokenService {
 
         let expiresAt: Date;
         const decoded: unknown = this.jwtService.decode(refreshToken);
+        const configuredTtl = this.configService.get('JWT_REFRESH_TOKEN_TTL_MS');
+        const fallbackTtlMs = Number.isFinite(Number(configuredTtl)) && Number(configuredTtl) > 0
+            ? Number(configuredTtl)
+            : 604_800_000;
         if (decoded && typeof decoded === 'object' && 'exp' in decoded && typeof (decoded as any).exp === 'number') {
             const exp = (decoded as { exp: number }).exp;
             const ts = exp * 1000;
             const d = new Date(ts);
-            expiresAt = isNaN(d.getTime()) ? new Date(Date.now() + this.configService.get<number>('JWT_REFRESH_TOKEN_TTL_MS', 604800000)) : d;
+            expiresAt = isNaN(d.getTime()) ? new Date(Date.now() + fallbackTtlMs) : d;
         } else {
-            const ttlMs = this.configService.get<number>('JWT_REFRESH_TOKEN_TTL_MS', 604800000);
-            expiresAt = new Date(Date.now() + ttlMs);
+            expiresAt = new Date(Date.now() + fallbackTtlMs);
         }
 
-        // 删除用户的旧 refresh token（可选：保留多个会话）
-        await this.prisma.refresh_tokens.deleteMany({
-            where: { user_id: userId },
-        });
+        const [, created] = await this.prisma.$transaction([
+            this.prisma.refresh_tokens.deleteMany({
+                where: { user_id: userId },
+            }),
+            this.prisma.refresh_tokens.create({
+                data: {
+                    id: crypto.randomUUID(),
+                    user_id: userId,
+                    token_hash: tokenHash,
+                    expires_at: expiresAt,
+                    is_revoked: false,
+                },
+            }),
+        ]);
 
-        return this.prisma.refresh_tokens.create({
-            data: {
-                id: crypto.randomUUID(),
-                user_id: userId,
-                token_hash: tokenHash,
-                expires_at: expiresAt,
-                is_revoked: false,
-            },
-        });
+        return created
     }
 
     async validateRefreshToken(refreshToken: string): Promise<{ userId: string }> {
