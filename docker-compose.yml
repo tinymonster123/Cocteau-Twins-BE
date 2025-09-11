@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   api:
+    image: ${DOCKERHUB_USERNAME:-your-dockerhub-username}/cocteau-twins-be:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
