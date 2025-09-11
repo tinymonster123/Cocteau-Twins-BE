@@ -42,20 +42,48 @@ jobs:
         run: |
           TARGET_DIR="/home/${{ secrets.SSH_USER }}/cocteau-twins-be"
 
-          scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT }} ./docker-compose.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${TARGET_DIR}/docker-compose.yml
+          ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            echo '开始部署准备...'
+            
+            # 创建目标目录
+            mkdir -p ${TARGET_DIR}
+            cd ${TARGET_DIR}
+            
+            # 停止并删除旧的容器
+            if [ -f docker-compose.prod.yml ]; then
+              echo '停止旧服务...'
+              docker compose -f docker-compose.prod.yml down || true
+            fi
+            
+            # 删除旧的 compose 文件
+            echo '清理旧配置文件...'
+            rm -f docker-compose.prod.yml docker-compose.yml
+            
+            echo '准备工作完成'
+          "
+
+          echo '传输新的配置文件...'
+          scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT }} ./docker-compose.prod.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${TARGET_DIR}/docker-compose.prod.yml
 
           ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             cd ${TARGET_DIR}
 
+            echo '设置环境变量...'
             export DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
             export IMAGE_TAG=${{ github.sha }}
+            
+            echo '当前部署版本: ${{ github.sha }}'
+            echo '拉取最新镜像...'
+            docker compose -f docker-compose.prod.yml pull api
 
-            echo '${{ secrets.DOCKERHUB_TOKEN }}' | docker login -u '${{ secrets.DOCKERHUB_USERNAME }}' --password-stdin
+            echo '启动服务...'
+            docker compose -f docker-compose.prod.yml up -d
 
-            docker-compose pull api
-            docker-compose up -d
-
+            echo '清理未使用的镜像...'
             docker image prune -f
 
-            echo 'Deployment completed successfully!'
+            echo '检查服务状态...'
+            docker compose -f docker-compose.prod.yml ps
+
+            echo '部署完成! 版本: ${{ github.sha }}'
           "
